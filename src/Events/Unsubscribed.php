@@ -2,7 +2,7 @@
 
 namespace Nakanakaii\LaravelSubscriptions\Events;
 
-use Illuminate\Foundation\Auth\User;
+use Illuminate\Database\Eloquent\Model;
 
 /**
  * The Unsubscribed event class represents an event that is triggered when a user unsubscribes from the system.
@@ -14,21 +14,21 @@ use Illuminate\Foundation\Auth\User;
 class Unsubscribed
 {
     /**
-     * The user object who unsubscribed.
+     * The model object who unsubscribed.
      *
-     * @var User
+     * @var model
      */
-    public $user;
+    public $model;
 
     /**
      * Constructor for the event.
      *
-     * This constructor takes an instance of the `User` model representing the user who unsubscribed.
+     * This constructor takes an instance of the model representing who unsubscribed.
      *
-     * @param  User  $user  The user object.
+     * @param  Model  $model  The model object.
      */
-    public function __construct(User $user)
+    public function __construct(Model $model)
     {
-        $this->user = $user;
+        $this->model = $model;
     }
 }

@@ -3,6 +3,7 @@
 namespace Nakanakaii\LaravelSubscriptions\Tests\Models;
 
 use Illuminate\Foundation\Testing\TestCase;
+use Illuminate\Support\Facades\Event;
 use Nakanakaii\LaravelSubscriptions\Commands\CheckSubscription;
 use Nakanakaii\LaravelSubscriptions\Events\SubscriptionExpired;
 use Nakanakaii\LaravelSubscriptions\Events\TrialEnded;
@@ -12,6 +13,8 @@ class CheckSubscriptionTest extends TestCase
 {
     public function test_check_for_trial_end()
     {
+        Event::fake();
+
         $subscription = Subscription::create([
             'trial_ends_at' => now()->subDay(),
         ]);
@@ -20,11 +23,18 @@ class CheckSubscriptionTest extends TestCase
         $command->handle();
 
         $this->assertEquals(Subscription::STATUS_PENDING, $subscription->fresh()->status);
-        $this->assertTrue(event(new TrialEnded($subscription))->called);
+        $this->assertTrue(Event::assertDispatched(
+            TrialEnded::class,
+            function ($event) use ($subscription) {
+                return $event->subscription->id === $subscription->id;
+            }
+        ));
     }
 
     public function test_check_for_subscription_expiration()
     {
+        Event::fake();
+
         $subscription = Subscription::create([
             'ends_at' => now()->subDay(),
         ]);
@@ -33,11 +43,18 @@ class CheckSubscriptionTest extends TestCase
         $command->updateSubscriptionStatus($subscription);
 
         $this->assertEquals(Subscription::STATUS_EXPIRED, $subscription->fresh()->status);
-        $this->assertTrue(event(new SubscriptionExpired($subscription))->called);
+        $this->assertTrue(Event::assertDispatched(
+            SubscriptionExpired::class,
+            function ($event) use ($subscription) {
+                return $event->subscription->id === $subscription->id;
+            }
+        ));
     }
 
     public function test_handle_active_subscriptions()
     {
+        Event::fake();
+
         $subscription = Subscription::create([
             'ends_at' => now()->addDay(),
         ]);
@@ -46,12 +63,24 @@ class CheckSubscriptionTest extends TestCase
         $command->updateSubscriptionStatus($subscription);
 
         $this->assertEquals(Subscription::STATUS_ACTIVE, $subscription->fresh()->status);
-        $this->assertFalse(event(new TrialEnded($subscription))->called);
-        $this->assertFalse(event(new SubscriptionExpired($subscription))->called);
+        $this->assertFalse(Event::assertDispatched(
+            TrialEnded::class,
+            function ($event) use ($subscription) {
+                return $event->subscription->id === $subscription->id;
+            }
+        ));
+        $this->assertFalse(Event::assertDispatched(
+            SubscriptionExpired::class,
+            function ($event) use ($subscription) {
+                return $event->subscription->id === $subscription->id;
+            }
+        ));
     }
 
     public function test_handle_subscriptions_with_no_end_date()
     {
+        Event::fake();
+
         $subscription = Subscription::create([
             'ends_at' => null,
         ]);
@@ -60,8 +89,18 @@ class CheckSubscriptionTest extends TestCase
         $command->updateSubscriptionStatus($subscription);
 
         $this->assertEquals(Subscription::STATUS_ACTIVE, $subscription->fresh()->status);
-        $this->assertFalse(event(new TrialEnded($subscription))->called);
-        $this->assertFalse(event(new SubscriptionExpired($subscription))->called);
+        $this->assertFalse(Event::assertDispatched(
+            TrialEnded::class,
+            function ($event) use ($subscription) {
+                return $event->subscription->id === $subscription->id;
+            }
+        ));
+        $this->assertFalse(Event::assertDispatched(
+            SubscriptionExpired::class,
+            function ($event) use ($subscription) {
+                return $event->subscription->id === $subscription->id;
+            }
+        ));
     }
 
     public function test_handle_subscriptions_with_no_trial_end_date()
@@ -74,7 +113,17 @@ class CheckSubscriptionTest extends TestCase
         $command->updateSubscriptionStatus($subscription);
 
         $this->assertEquals(Subscription::STATUS_ACTIVE, $subscription->fresh()->status);
-        $this->assertFalse(event(new TrialEnded($subscription))->called);
-        $this->assertFalse(event(new SubscriptionExpired($subscription))->called);
+        $this->assertFalse(Event::assertDispatched(
+            TrialEnded::class,
+            function ($event) use ($subscription) {
+                return $event->subscription->id === $subscription->id;
+            }
+        ));
+        $this->assertFalse(Event::assertDispatched(
+            SubscriptionExpired::class,
+            function ($event) use ($subscription) {
+                return $event->subscription->id === $subscription->id;
+            }
+        ));
     }
 }

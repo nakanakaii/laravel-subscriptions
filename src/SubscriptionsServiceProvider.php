@@ -5,6 +5,7 @@ namespace Nakanakaii\LaravelSubscriptions;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
 use Nakanakaii\LaravelSubscriptions\Commands\CheckSubscription;
+use Nakanakaii\LaravelSubscriptions\Policies\SubscriptionPolicy;
 
 class SubscriptionsServiceProvider extends ServiceProvider
 {
@@ -16,10 +17,10 @@ class SubscriptionsServiceProvider extends ServiceProvider
     public function boot()
     {
         $this->publishes([
-            __DIR__.'/../migrations/' => database_path('migrations'),
+            __DIR__ . '/../migrations/' => database_path('migrations'),
         ], 'subscriptions-migrations');
         $this->publishes([
-            __DIR__.'/../config/subscriptions.php' => config_path('subscriptions.php'),
+            __DIR__ . '/../config/subscriptions.php' => config_path('subscriptions.php'),
         ], 'subscriptions-config');
 
         if ($this->app->runningInConsole()) {
@@ -30,9 +31,7 @@ class SubscriptionsServiceProvider extends ServiceProvider
 
         // Register the User Policy
         Gate::guessPolicyNamesUsing(function (string $modelClass) {
-            if ($modelClass === 'App\\Models\\User') {
-                return 'Nakanakaii\\LaravelSubscriptions\\Policies\\UserPolicy';
-            }
+            return SubscriptionPolicy::class;
         });
     }
 
@@ -43,6 +42,6 @@ class SubscriptionsServiceProvider extends ServiceProvider
      */
     public function register()
     {
-        $this->mergeConfigFrom(__DIR__.'/../config/subscriptions.php', 'subscriptions');
+        $this->mergeConfigFrom(__DIR__ . '/../config/subscriptions.php', 'subscriptions');
     }
 }

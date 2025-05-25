@@ -14,138 +14,90 @@ use Nakanakaii\LaravelSubscriptions\Requests\SubscriptionRequest;
 
 trait SubscriptionTrait
 {
-    /**
-     * Subscribes the currently authenticated user to a plan.
-     *
-     * This method takes a `SubscriptionRequest` object as input, which contains the plan ID and billing cycle information.
-     * It validates the request data and then performs the following actions:
-     *  - Retrieves the authenticated user using `Auth::user()`.
-     *  - Finds the plan based on the provided ID using `Plan::find($request->plan_id)`.
-     *  - Checks if the plan offers a trial period based on `$plan->trial_days`.
-     *     - If there's a trial:
-     *         1. Creates a new subscription for the user with `Subscription::STATUS_TRIAL` status.
-     *         2. Sets the trial end date (`trial_ends_at`) to `now()` plus the trial days.
-     *         3. Sets the subscription start date (`started_at`) to the trial end date.
-     *         4. Sets the subscription end date (`ended_at`) based on the billing cycle (yearly or monthly).
-     *         5. Records an invoice for the plan price and name using `recordInvoice` method.
-     *     - If no trial:
-     *         1. Creates a new subscription for the user with `Subscription::STATUS_ACTIVE` status.
-     *         2. Sets the subscription start date (`started_at`) to `now()`.
-     *         3. Sets the subscription end date (`ended_at`) based on the billing cycle (yearly or monthly).
-     *         4. Records an invoice for the plan price and name using `recordInvoice` method.
-     * - Dispatches a `Subscribed` event with the subscribed user.
-     * - Returns a redirect response with a success message.
-     *
-     * @param  SubscriptionRequest  $request  The request object containing the plan ID and billing cycle.
-     * @return RedirectResponse The redirect response with a success message.
-     */
+    protected static function subscriber()
+    {
+        return Auth::user();
+    }
+
     public static function subscribe(SubscriptionRequest $request): RedirectResponse
     {
         $request->validated();
 
-        $user = Auth::user();
-        $plan = Plan::find($request->plan_id);
-        $trialDays = $plan->trial_days;
+        $subscriber = self::subscriber();
+        $plan = Plan::findOrFail($request->plan_id);
 
-        if ($trialDays) {
-            $user->subscription()->create([
-                'plan_id' => $plan->id,
-                'status' => Subscription::STATUS_TRIAL,
-                'billing_cycle' => $request->billing_cycle,
-                'trial_ends_at' => now()->addDays($trialDays),
-                'started_at' => now()->addDays($trialDays),
-                'ended_at' => now()->addDays($request->billing_cycle == 'yearly' ? 365 : 30),
-            ])->recordInvoice($plan->price, $plan->name);
-        } else {
-            $user->subscription()->create([
-                'plan_id' => $plan->id,
-                'status' => Subscription::STATUS_ACTIVE,
-                'started_at' => now(),
-                'ended_at' => now()->addDays($request->billing_cycle == 'yearly' ? 365 : 30),
-            ])->recordInvoice($plan->price, $plan->name);
+        if ($subscriber->subscription) {
+            $subscriber->subscription->delete(); // remove any old subscription
         }
 
-        event(new Subscribed($user));
+        $billingDays = $request->billing_cycle === 'yearly' ? 365 : 30;
+        $trialEndsAt = now()->addDays($plan->trial_days ?? 0);
 
-        return back()->with('success', 'Subscribed successfully');
+        $subscription = $subscriber->subscription()->create([
+            'plan_id' => $plan->id,
+            'status' => $plan->trial_days ? Subscription::STATUS_TRIAL : Subscription::STATUS_ACTIVE,
+            'billing_cycle' => $request->billing_cycle,
+            'trial_ends_at' => $plan->trial_days ? $trialEndsAt : null,
+            'started_at' => $plan->trial_days ? $trialEndsAt : now(),
+            'ends_at' => $plan->trial_days
+                ? $trialEndsAt->copy()->addDays($billingDays)
+                : now()->addDays($billingDays),
+        ]);
+
+        $subscription->recordInvoice(
+            amount: $plan->price,
+            description: "{$plan->name} ({$request->billing_cycle})"
+        );
+
+        event(new Subscribed($subscriber));
+
+        return back()->with('success', 'You have successfully subscribed to the plan.');
     }
 
-    /**
-     * Renews a subscription for the user based on the provided request.
-     *
-     * This method takes a `SubscriptionRenewalRequest` object as input, which contains information
-     * needed for subscription renewal. It performs the following actions:
-     *  - Retrieves the authenticated user using `Auth::user()`.
-     *  - Retrieves the user's existing subscription using `$user->subscription`.
-     *  - Checks if the user has an existing subscription using `isset($subscription)`.
-     *     - If there's no subscription, returns a redirect response with an error message.
-     *  - Updates the existing subscription with:
-     *     1. `Subscription::STATUS_ACTIVE` status.
-     *     2. The end date (`ended_at`) extended based on the requested renewal period (yearly or monthly).
-     * - Returns a redirect response with a success message.
-     *
-     * @param  SubscriptionRenewalRequest  $request  The request object containing the information needed for subscription renewal.
-     * @return RedirectResponse The redirect response with success or error message based on the renewal outcome.
-     */
-    public static function renew(SubscriptionRenewalRequest $request)
+    public static function renew(SubscriptionRenewalRequest $request): RedirectResponse
     {
-        $user = Auth::user();
-        $subscription = $user->subscription;
+        $subscriber = self::subscriber();
+        $subscription = $subscriber->subscription;
 
-        if (! isset($subscription)) {
-            return back()->with('error', '');
+        if (! $subscription) {
+            return back()->with('error', 'You do not have an active subscription to renew.');
         }
+
+        $billingDays = $request->annual ? 365 : 30;
 
         $subscription->update([
             'status' => Subscription::STATUS_ACTIVE,
-            'ended_at' => $subscription->ended_at->addDays($request->annual ? 365 : 30),
+            'ends_at' => $subscription->ends_at->copy()->addDays($billingDays),
         ]);
 
-        return back()->with('success', '');
+        return back()->with('success', 'Your subscription has been renewed.');
     }
 
-    /**
-     * Cancels the user's subscription and triggers the Unsubscribed event.
-     *
-     * This method performs the following actions:
-     *  - Retrieves the authenticated user using `Auth::user()`.
-     *  - Checks if the user is authorized to cancel the subscription using `Gate::denies('canCancel', $user)`.
-     *     - If the user is not authorized, returns a redirect response with an error message.
-     *  - Updates the user's subscription with `Subscription::STATUS_CANCELLED` status.
-     *  - Dispatches an `Unsubscribed` event with the unsubscribed user.
-     * - Returns a redirect response with a success message indicating cancellation.
-     *
-     * @return RedirectResponse The redirect response with a success or error message.
-     */
-    public static function cancel()
+    public static function cancel(): RedirectResponse
     {
-        $user = Auth::user();
+        $subscriber = self::subscriber();
 
-        if (Gate::denies('canCancel', $user)) {
-            return back()->with('error', '');
+        if (Gate::denies('canCancel', $subscriber)) {
+            return back()->with('error', 'You are not authorized to cancel this subscription.');
         }
 
-        $user->subscription->cancel();
+        $subscriber->subscription->cancel();
 
-        event(new Unsubscribed($user));
+        event(new Unsubscribed($subscriber));
 
-        return back()->with('success', 'Subscription cancelled');
+        return back()->with('success', 'Your subscription has been cancelled.');
     }
 
-    /** Resumes the user's subscription.
-     *
-     * This method performs the following actions:
-     *  - Retrieves the authenticated user using `Auth::user()`.
-     *  - Resumes the user's subscription.
-     *  - Returns a redirect response with a success message.
-     *
-     * @return RedirectResponse The redirect response with a success or error message.
-     */
-    public static function resume()
+    public static function resume(): RedirectResponse
     {
-        $user = Auth::user();
-        $user->subscription->activate();
+        $subscriber = self::subscriber();
 
-        return back()->with('success', 'Subscription resumed');
+        if (! $subscriber->subscription || ! $subscriber->subscription->isCancelled()) {
+            return back()->with('error', 'No cancelled subscription to resume.');
+        }
+
+        $subscriber->subscription->activate();
+
+        return back()->with('success', 'Your subscription has been resumed.');
     }
 }

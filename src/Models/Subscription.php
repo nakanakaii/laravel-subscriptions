@@ -13,19 +13,19 @@ class Subscription extends Model
     use HasFactory, SoftDeletes;
 
     /** Status if the subscription is active. */
-    const STATUS_ACTIVE = 'active';
+    public const STATUS_ACTIVE = 'active';
 
     /** Status if the subscription is in trial. */
-    const STATUS_TRIAL = 'trial';
+    public const STATUS_TRIAL = 'trial';
 
     /** Status if the subscription is pending payment. */
-    const STATUS_PENDING = 'pending';
+    public const STATUS_PENDING = 'pending';
 
     /** Status if the subscription is cancelled. */
-    const STATUS_CANCELLED = 'cancelled';
+    public const STATUS_CANCELLED = 'cancelled';
 
     /** Status if the subscription is expired. */
-    const STATUS_EXPIRED = 'expired';
+    public const STATUS_EXPIRED = 'expired';
 
     protected $guarded = ['id', 'created_at', 'updated_at', 'deleted_at'];
 
@@ -55,5 +55,45 @@ class Subscription extends Model
     public function cancel()
     {
         $this->status = self::STATUS_CANCELLED;
+    }
+
+    public function isTrial(): bool
+    {
+        return $this->status === self::STATUS_TRIAL;
+    }
+
+    public function isActive(): bool
+    {
+        return $this->status === self::STATUS_ACTIVE;
+    }
+
+    public function isMonthly(): bool
+    {
+        return $this->billing_cycle === 'monthly';
+    }
+
+    public function isYearly(): bool
+    {
+        return $this->billing_cycle === 'yearly';
+    }
+
+    public function isPending(): bool
+    {
+        return $this->status === self::STATUS_PENDING;
+    }
+
+    public function isCancelled(): bool
+    {
+        return $this->status === self::STATUS_CANCELLED;
+    }
+
+    public function isExpired(): bool
+    {
+        return $this->status === self::STATUS_EXPIRED;
+    }
+
+    public function subscriber()
+    {
+        return $this->morphTo('subscriber');
     }
 }

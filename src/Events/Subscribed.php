@@ -2,33 +2,33 @@
 
 namespace Nakanakaii\LaravelSubscriptions\Events;
 
-use Illuminate\Foundation\Auth\User;
+use Illuminate\Database\Eloquent\Model;
 
 /**
- * The Subscribed event class represents an event that is triggered when a user subscribes to the system.
+ * The Subscribed event class represents an event that is triggered when a model subscribes to the system.
  *
  * This event is typically dispatched after a successful subscription creation process. It allows other parts
- * of your application to react to the user's subscription, such as sending welcome emails, logging activity,
- * or updating user profiles.
+ * of your application to react to the model's subscription, such as sending welcome emails, logging activity,
+ * or updating model profiles.
  */
 class Subscribed
 {
     /**
-     * The user object who subscribed.
+     * The model object who subscribed.
      *
-     * @var User
+     * @var Model
      */
-    public $user;
+    public $model;
 
     /**
      * Constructor for the event.
      *
-     * This constructor takes an instance of the `User` model representing the user who subscribed.
+     * This constructor takes an instance of the `Model` model representing who subscribed.
      *
-     * @param  User  $user  The user object.
+     * @param  Model $model  The model object.
      */
-    public function __construct(User $user)
+    public function __construct(Model $model)
     {
-        $this->user = $user;
+        $this->model = $model;
     }
 }
